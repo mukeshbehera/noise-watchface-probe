@@ -10,6 +10,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.remember
 import androidx.lifecycle.lifecycleScope
 import com.noisewatchface.probe.ble.ProbeManager
 import com.noisewatchface.probe.ui.ProbeScreen
@@ -38,16 +39,23 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             MaterialTheme {
+                // BLE frames arrive several times a second; reading the bonded
+                // list on every recomposition would be wasteful. Cache it.
+                val paired = remember { probe.pairedDevices() }
+
                 val devices = probe.devices.collectAsState().value
                 val connectedTo = probe.connectedTo.collectAsState().value
                 val scanning = probe.scanning.collectAsState().value
                 val mtu = probe.negotiatedMtu.collectAsState().value
                 val identity = probe.identity.collectAsState().value
                 val lines = probe.lines.collectAsState().value
+                val connectFailed = probe.connectFailed.collectAsState().value
 
                 ProbeScreen(
                     devices = devices,
+                    paired = paired,
                     connectedTo = connectedTo,
+                    connectFailed = connectFailed,
                     scanning = scanning,
                     mtu = mtu,
                     identity = identity,
@@ -55,6 +63,7 @@ class MainActivity : ComponentActivity() {
                     onScan = { requestScan() },
                     onStop = { probe.stopScan() },
                     onConnect = { probe.connect(it.device) },
+                    onConnectPaired = { probe.connect(it) },
                     onDisconnect = { probe.disconnect() },
                     onClear = { probe.clearLog() },
                     onExport = { shareLog() },

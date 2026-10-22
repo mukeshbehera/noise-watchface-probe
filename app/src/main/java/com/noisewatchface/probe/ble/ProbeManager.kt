@@ -50,6 +50,14 @@ class ProbeManager(private val context: Context) {
     private val _identity = MutableStateFlow<Map<String, String>>(emptyMap())
     val identity: StateFlow<Map<String, String>> = _identity.asStateFlow()
 
+    /** Human-readable reason the last connection attempt failed, if any. */
+    private val _connectFailed = MutableStateFlow<String?>(null)
+    val connectFailed: StateFlow<String?> = _connectFailed.asStateFlow()
+
+    fun clearConnectError() {
+        _connectFailed.value = null
+    }
+
     private val adapter: BluetoothAdapter? =
         (context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager)?.adapter
 
@@ -129,10 +137,29 @@ class ProbeManager(private val context: Context) {
         _scanning.value = false
     }
 
+    /**
+     * Devices Android already knows about — bonded/pairing records plus any it
+     * has cached. A connected BLE peripheral usually stops advertising, so this
+     * is the only way to see a watch that NoiseFit currently holds.
+     */
+    fun pairedDevices(): List<Pair<BluetoothDevice, Boolean>> {
+        val a = adapter ?: return emptyList()
+        return runCatching {
+            a.bondedDevices.orEmpty().map { it to true }
+        }.getOrDefault(emptyList())
+    }
+
+    /** Last-known remote device for an address, usable without an active scan. */
+    fun deviceForAddress(address: String): BluetoothDevice? {
+        val a = adapter ?: return null
+        return runCatching { a.getRemoteDevice(address) }.getOrNull()
+    }
+
     fun connect(device: BluetoothDevice) {
         stopScan()
-        log(LogLine.Kind.INFO, "Connecting to ${device.address}…")
+        log(LogLine.Kind.INFO, "Connecting to ${device.name ?: device.address} (${device.address})…")
         _connectedTo.value = null
+        _connectFailed.value = null
         gatt?.close()
         gatt = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             device.connectGatt(context, false, gattCallback, BluetoothDevice.TRANSPORT_LE)
@@ -153,17 +180,29 @@ class ProbeManager(private val context: Context) {
     private val gattCallback = object : BluetoothGattCallback() {
 
         override fun onConnectionStateChange(g: BluetoothGatt, status: Int, newState: Int) {
-            if (newState == BluetoothProfile.STATE_CONNECTED) {
+            if (newState == BluetoothProfile.STATE_CONNECTED && status == BluetoothGatt.GATT_SUCCESS) {
                 _connectedTo.value = g.device.address
-                log(LogLine.Kind.INFO, "Connected to ${g.device.address} (status=$status)")
+                log(LogLine.Kind.INFO, "Connected to ${g.device.name ?: g.device.address}")
                 // Ask for a large MTU; the real MTU is reported in onMtuChanged.
                 g.requestMtu(517)
                 g.discoverServices()
                 log(LogLine.Kind.INFO, "Discovering services…")
             } else {
                 _connectedTo.value = null
-                log(LogLine.Kind.INFO, "Disconnected (status=$status)")
-                g.close()
+                val explained = explainGattStatus(status)
+                _connectFailed.value = explained
+                log(
+                    LogLine.Kind.ERROR,
+                    "Connection failed: status=$status (${explained.ifBlank { "unknown" }})",
+                )
+                if (status == 133 || explained.contains("occupied", true)) {
+                    log(
+                        LogLine.Kind.INFO,
+                        "  → Another app is probably connected to this device. BLE peripherals " +
+                            "usually allow one central at a time. Close NoiseFit, then retry.",
+                    )
+                }
+                runCatching { g.close() }
                 gatt = null
             }
         }
@@ -371,6 +410,24 @@ class ProbeManager(private val context: Context) {
         if (p and BluetoothGattCharacteristic.PROPERTY_INDICATE != 0) sb.append('I')
         if (p and BluetoothGattCharacteristic.PROPERTY_SIGNED_WRITE != 0) sb.append('S')
         return if (sb.isEmpty()) "-" else sb.toString()
+    }
+
+    /**
+     * Decodes the common GATT connection error codes. These are the ones that
+     * actually show up when a peripheral is held by another app or has stale
+     * state; anything else is reported numerically rather than guessed at.
+     */
+    private fun explainGattStatus(status: Int): String = when (status) {
+        0 -> ""
+        8 -> "connection timed out"
+        19 -> "remote device terminated the connection"
+        22 -> "connection terminated by local host"
+        34 -> "GATT cache is stale — toggle Bluetooth off/on"
+        62 -> "connection failed (stale bond)"
+        133 -> "device occupied by another connection (common when another app holds it)"
+        137 -> "connection failed (device out of range or busy)"
+        147 -> "connection failed (device not found)"
+        else -> ""
     }
 
     private companion object {

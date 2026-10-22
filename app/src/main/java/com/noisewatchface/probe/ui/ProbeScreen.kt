@@ -1,5 +1,6 @@
 package com.noisewatchface.probe.ui
 
+import android.bluetooth.BluetoothDevice
 import android.bluetooth.le.ScanResult
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -39,11 +40,14 @@ import com.noisewatchface.probe.ble.addressKind
 import com.noisewatchface.probe.ble.advertisedName
 import com.noisewatchface.probe.ble.advertisedServices
 import com.noisewatchface.probe.ble.assess
+import com.noisewatchface.probe.ble.assessName
 
 @Composable
 fun ProbeScreen(
     devices: List<ScanResult>,
+    paired: List<Pair<BluetoothDevice, Boolean>>,
     connectedTo: String?,
+    connectFailed: String?,
     scanning: Boolean,
     mtu: Int?,
     identity: Map<String, String>,
@@ -51,6 +55,7 @@ fun ProbeScreen(
     onScan: () -> Unit,
     onStop: () -> Unit,
     onConnect: (ScanResult) -> Unit,
+    onConnectPaired: (BluetoothDevice) -> Unit,
     onDisconnect: () -> Unit,
     onClear: () -> Unit,
     onExport: () -> Unit,
@@ -102,6 +107,21 @@ fun ProbeScreen(
                 }
             }
 
+            if (connectFailed != null) {
+                Spacer(Modifier.height(6.dp))
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFF3A1F1F)),
+                    shape = RoundedCornerShape(8.dp),
+                ) {
+                    Text(
+                        "Connect failed: $connectFailed",
+                        modifier = Modifier.padding(8.dp),
+                        fontSize = 11.sp,
+                        color = Color(0xFFFFB4B4),
+                    )
+                }
+            }
+
             Spacer(Modifier.height(8.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(onClick = onScan, enabled = !scanning) { Text("Scan") }
@@ -111,7 +131,9 @@ fun ProbeScreen(
                 }
             }
 
-            if (devices.isNotEmpty() && connectedTo == null) {
+            // Paired devices come first: Android knows their real names, and a
+            // connected watch stops advertising so it may never appear in a scan.
+            if (connectedTo == null && (paired.isNotEmpty() || devices.isNotEmpty())) {
                 Spacer(Modifier.height(8.dp))
                 Card(
                     colors = CardDefaults.cardColors(
@@ -119,10 +141,22 @@ fun ProbeScreen(
                     ),
                     shape = RoundedCornerShape(10.dp),
                 ) {
-                    LazyColumn(modifier = Modifier.height(180.dp).fillMaxWidth()) {
-                        items(devices) { result ->
-                            DeviceRow(result) { onConnect(result) }
-                            Divider()
+                    LazyColumn(modifier = Modifier.height(220.dp).fillMaxWidth()) {
+                        if (paired.isNotEmpty()) {
+                            item {
+                                SectionHeader("Paired with this phone (best match)")
+                            }
+                            items(paired) { (device, bonded) ->
+                                PairedRow(device, bonded) { onConnectPaired(device) }
+                                Divider()
+                            }
+                        }
+                        if (devices.isNotEmpty()) {
+                            item { SectionHeader("Nearby (advertising now)") }
+                            items(devices) { result ->
+                                DeviceRow(result) { onConnect(result) }
+                                Divider()
+                            }
                         }
                     }
                 }
@@ -166,6 +200,58 @@ private fun StatusRow(connectedTo: String?, mtu: Int?, scanning: Boolean) {
         else -> MaterialTheme.colorScheme.onSurfaceVariant
     }
     Text(status, style = MaterialTheme.typography.bodyMedium, color = color)
+}
+
+@Composable
+private fun SectionHeader(text: String) {
+    Text(
+        text,
+        fontSize = 10.sp,
+        fontWeight = FontWeight.Bold,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 6.dp),
+    )
+}
+
+@Composable
+private fun PairedRow(device: BluetoothDevice, bonded: Boolean, onClick: () -> Unit) {
+    val name = device.name ?: "(no name)"
+    val verdict = assessName(name)
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(name, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                if (verdict.likely) {
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        "LIKELY WATCH",
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFF0B2A1F),
+                        modifier = Modifier
+                            .background(Color(0xFF57D9A3), RoundedCornerShape(4.dp))
+                            .padding(horizontal = 5.dp, vertical = 2.dp),
+                    )
+                }
+            }
+            Text(
+                "${device.address}  " +
+                    if (bonded) "bonded • type ${device.type}" else "cached",
+                fontSize = 11.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            verdict.reason?.let { Text(it, fontSize = 10.sp, color = Color(0xFF57D9A3)) }
+        }
+        Text("connect ›", fontSize = 11.sp, color = MaterialTheme.colorScheme.primary)
+    }
 }
 
 @Composable

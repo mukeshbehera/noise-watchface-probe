@@ -88,6 +88,14 @@ fun assess(result: ScanResult): ScanVerdict {
     return ScanVerdict(false, null)
 }
 
+/** Name-only assessment, for bonded devices that are not advertising. */
+fun assessName(name: String?): ScanVerdict {
+    val lower = name?.lowercase(Locale.US).orEmpty()
+    val hit = listOf("noise", "evolve", "colorfit", "watch", "nsw", "bolt")
+        .firstOrNull { lower.contains(it) }
+    return if (hit != null) ScanVerdict(true, "name contains \"$hit\"") else ScanVerdict(false, null)
+}
+
 /** One-line evidence summary for the log and the UI. */
 fun describe(result: ScanResult): String {
     val parts = mutableListOf<String>()
