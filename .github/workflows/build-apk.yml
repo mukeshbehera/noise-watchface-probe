@@ -21,8 +21,19 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+      # ubuntu-latest images ship the Android SDK. Point Gradle at it rather
+      # than re-installing cmdline-tools, which is flaky in CI.
+      - name: Configure Android SDK
+        run: |
+          SDK="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
+          echo "Using SDK at $SDK"
+          echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK" >> "$GITHUB_ENV"
+          echo "sdk.dir=$SDK" > local.properties
+          ls "$SDK" || true
+          # Ensure the platform this project compiles against exists.
+          yes | "$SDK/cmdline-tools/latest/bin/sdkmanager" \
+            "platforms;android-34" "build-tools;34.0.0" > /dev/null 2>&1 || true
 
       - name: Grant execute permission for gradlew
         run: chmod +x ./gradlew
