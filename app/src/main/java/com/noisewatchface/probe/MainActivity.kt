@@ -42,6 +42,7 @@ class MainActivity : ComponentActivity() {
                 val connectedTo = probe.connectedTo.collectAsState().value
                 val scanning = probe.scanning.collectAsState().value
                 val mtu = probe.negotiatedMtu.collectAsState().value
+                val identity = probe.identity.collectAsState().value
                 val lines = probe.lines.collectAsState().value
 
                 ProbeScreen(
@@ -49,6 +50,7 @@ class MainActivity : ComponentActivity() {
                     connectedTo = connectedTo,
                     scanning = scanning,
                     mtu = mtu,
+                    identity = identity,
                     lines = lines,
                     onScan = { requestScan() },
                     onStop = { probe.stopScan() },

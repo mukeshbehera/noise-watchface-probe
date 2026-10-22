@@ -1,6 +1,7 @@
 package com.noisewatchface.probe.ui
 
 import android.bluetooth.le.ScanResult
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -34,6 +35,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.noisewatchface.probe.ble.LogLine
+import com.noisewatchface.probe.ble.addressKind
+import com.noisewatchface.probe.ble.advertisedName
+import com.noisewatchface.probe.ble.advertisedServices
+import com.noisewatchface.probe.ble.assess
 
 @Composable
 fun ProbeScreen(
@@ -41,6 +46,7 @@ fun ProbeScreen(
     connectedTo: String?,
     scanning: Boolean,
     mtu: Int?,
+    identity: Map<String, String>,
     lines: List<LogLine>,
     onScan: () -> Unit,
     onStop: () -> Unit,
@@ -72,6 +78,29 @@ fun ProbeScreen(
             Spacer(Modifier.height(8.dp))
 
             StatusRow(connectedTo = connectedTo, mtu = mtu, scanning = scanning)
+
+            if (identity.isNotEmpty()) {
+                Spacer(Modifier.height(6.dp))
+                Card(
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                    ),
+                    shape = RoundedCornerShape(8.dp),
+                ) {
+                    Column(Modifier.padding(8.dp)) {
+                        identity.forEach { (k, v) ->
+                            Row {
+                                Text(
+                                    "$k: ",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                )
+                                Text(v, fontSize = 11.sp, fontFamily = FontFamily.Monospace)
+                            }
+                        }
+                    }
+                }
+            }
 
             Spacer(Modifier.height(8.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -141,7 +170,11 @@ private fun StatusRow(connectedTo: String?, mtu: Int?, scanning: Boolean) {
 
 @Composable
 private fun DeviceRow(result: ScanResult, onClick: () -> Unit) {
-    val name = result.device.name ?: result.scanRecord?.deviceName ?: "(no name)"
+    val name = advertisedName(result) ?: "(no name)"
+    val verdict = assess(result)
+    val kind = addressKind(result.device.address)
+    val services = advertisedServices(result)
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -150,15 +183,51 @@ private fun DeviceRow(result: ScanResult, onClick: () -> Unit) {
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(modifier = Modifier.weight(1f)) {
-            Text(name, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(name, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                if (verdict.likely) {
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        "LIKELY WATCH",
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFF0B2A1F),
+                        modifier = Modifier
+                            .background(Color(0xFF57D9A3), RoundedCornerShape(4.dp))
+                            .padding(horizontal = 5.dp, vertical = 2.dp),
+                    )
+                }
+            }
             Text(
-                result.device.address,
+                "${result.device.address}  ($kind)",
                 fontSize = 11.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            if (services.isNotEmpty()) {
+                Text(
+                    "advertises: " + services.joinToString(", "),
+                    fontSize = 10.sp,
+                    color = Color(0xFF7FD1FF),
+                )
+            }
+            // Weak signal on its own, shown only when nothing stronger matched.
+            if (!verdict.likely && kind == "random") {
+                Text(
+                    "random address — typical of wearables and phones",
+                    fontSize = 10.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            verdict.reason?.let {
+                Text(it, fontSize = 10.sp, color = Color(0xFF57D9A3))
+            }
         }
         Spacer(Modifier.width(8.dp))
-        Text("${result.rssi} dBm", fontSize = 11.sp)
+        Column(horizontalAlignment = Alignment.End) {
+            Text("${result.rssi} dBm", fontSize = 11.sp)
+            Text(if (result.isConnectable) "conn" else "n/conn", fontSize = 9.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
     }
 }
 
