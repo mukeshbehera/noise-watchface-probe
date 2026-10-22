@@ -1,6 +1,5 @@
 package com.noisewatchface.probe.ui
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -27,14 +26,18 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.noisewatchface.probe.dial.DialCandidate
+import com.noisewatchface.probe.dial.DialTemplate
+import com.noisewatchface.probe.dial.FaceDraft
 
 @Composable
 fun WatchFaceScreen(
     watchName: String?,
-    candidate: DialCandidate?,
-    onPickFile: () -> Unit,
-    onInspect: () -> Unit,
+    templates: List<DialTemplate>,
+    selectedTemplate: DialTemplate?,
+    draft: FaceDraft?,
+    onSelectTemplate: (DialTemplate) -> Unit,
+    onPickImage: () -> Unit,
+    onPreview: () -> Unit,
     onSend: () -> Unit,
     onBack: () -> Unit,
 ) {
@@ -48,86 +51,127 @@ fun WatchFaceScreen(
             ScreenHeader("Watch faces", watchName, onBack)
 
             Spacer(Modifier.height(10.dp))
-            Card(
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant,
-                ),
-                shape = RoundedCornerShape(10.dp),
-            ) {
-                Column(Modifier.padding(12.dp)) {
-                    Text("1 · Choose a dial file", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
-                    Text(
-                        "A .bin or .zip containing a TOPSTEP container, as shipped in the " +
-                            "official app.",
-                        fontSize = 11.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    Spacer(Modifier.height(8.dp))
-                    Button(onClick = onPickFile) { Text("Pick file") }
-                }
-            }
+            SectionTitle("1 · Choose a template")
+            Text(
+                "A template is a dial the official app ships. It supplies everything the " +
+                    "watch expects; you replace only its background image.",
+                fontSize = 11.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.height(6.dp))
 
-            if (candidate != null) {
-                Spacer(Modifier.height(10.dp))
-                CandidateCard(candidate)
-            }
-
-            Spacer(Modifier.height(10.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(onClick = onInspect, enabled = candidate != null) {
-                    Text("2 · Inspect")
-                }
-                Button(
-                    onClick = onSend,
-                    enabled = candidate?.valid == true,
-                ) {
-                    Text("3 · Send to watch")
+            if (templates.isEmpty()) {
+                Notice(
+                    "No templates available. This build ships none yet — see the note at the " +
+                        "bottom of this screen.",
+                    Color(0xFF3A1F1F),
+                    Color(0xFFFFB4B4),
+                )
+            } else {
+                templates.forEach { t ->
+                    TemplateRow(
+                        template = t,
+                        selected = t.displayName == selectedTemplate?.displayName,
+                    ) { onSelectTemplate(t) }
                 }
             }
 
             Spacer(Modifier.height(12.dp))
-            Card(
-                colors = CardDefaults.cardColors(containerColor = Color(0xFF2A2418)),
-                shape = RoundedCornerShape(8.dp),
-            ) {
-                Text(
-                    "Sending is not implemented. The container can be parsed and rebuilt " +
-                        "locally, but the transfer path and apply step do not exist yet, so " +
-                        "this button will not do anything.",
-                    modifier = Modifier.padding(10.dp),
-                    fontSize = 11.sp,
-                    color = Color(0xFFF2C94C),
-                )
+            SectionTitle("2 · Choose your image")
+            Text(
+                "Any photo. It is scaled to fill the screen and centre-cropped to " +
+                    "${selectedTemplate?.let { "${it.width}×${it.height}" } ?: "the watch size"}.",
+                fontSize = 11.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.height(6.dp))
+            Button(onClick = onPickImage, enabled = selectedTemplate != null) {
+                Text("Pick image")
             }
+
+            if (draft != null) {
+                Spacer(Modifier.height(8.dp))
+                Card(
+                    colors = CardDefaults.cardColors(
+                        containerColor = if (draft.ready) Color(0xFF12301F) else Color(0xFF3A1F1F),
+                    ),
+                    shape = RoundedCornerShape(8.dp),
+                ) {
+                    Column(Modifier.padding(10.dp)) {
+                        Text(
+                            draft.imageName ?: "image",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                        Text(draft.note, fontSize = 11.sp, color = Color(0xFFB8B8C8))
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(12.dp))
+            SectionTitle("3 · Build and send")
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(onClick = onPreview, enabled = draft?.ready == true) {
+                    Text("Preview")
+                }
+                Button(onClick = onSend, enabled = draft?.ready == true) {
+                    Text("Send to watch")
+                }
+            }
+
+            Spacer(Modifier.height(12.dp))
+            Notice(
+                "Sending is not implemented. The app can build a valid container locally, " +
+                    "but it has no channel to the watch while the official app holds the " +
+                    "connection.",
+                Color(0xFF2A2418),
+                Color(0xFFF2C94C),
+            )
         }
     }
 }
 
 @Composable
-private fun CandidateCard(candidate: DialCandidate) {
+private fun SectionTitle(text: String) {
+    Text(text, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+}
+
+@Composable
+private fun Notice(text: String, bg: Color, fg: Color) {
+    Card(colors = CardDefaults.cardColors(containerColor = bg), shape = RoundedCornerShape(8.dp)) {
+        Text(text, modifier = Modifier.padding(10.dp), fontSize = 11.sp, color = fg)
+    }
+}
+
+@Composable
+private fun TemplateRow(template: DialTemplate, selected: Boolean, onClick: () -> Unit) {
     Card(
+        modifier = Modifier
+            .padding(vertical = 3.dp)
+            .clickable(onClick = onClick),
         colors = CardDefaults.cardColors(
-            containerColor = if (candidate.valid) Color(0xFF12301F) else Color(0xFF3A1F1F),
+            containerColor = if (selected) {
+                MaterialTheme.colorScheme.primaryContainer
+            } else {
+                MaterialTheme.colorScheme.surfaceVariant
+            },
         ),
-        shape = RoundedCornerShape(10.dp),
+        shape = RoundedCornerShape(8.dp),
     ) {
-        Column(Modifier.padding(12.dp)) {
-            Text(candidate.displayName, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
-            Text("${candidate.byteCount} bytes", fontSize = 11.sp, color = Color(0xFFB8B8C8))
-            Spacer(Modifier.height(6.dp))
-            Text(
-                if (candidate.valid) "Recognised TOPSTEP container" else "Not usable",
-                fontSize = 12.sp,
-                fontWeight = FontWeight.SemiBold,
-                color = if (candidate.valid) Color(0xFF57D9A3) else Color(0xFFFFB4B4),
-            )
-            Text(
-                candidate.payloadSummary,
-                fontSize = 11.sp,
-                fontFamily = FontFamily.Monospace,
-                color = Color(0xFFB8B8C8),
-                modifier = Modifier.padding(top = 4.dp),
-            )
+        Row(
+            modifier = Modifier.padding(10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text(template.displayName, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                Text(
+                    "${template.width}×${template.height}",
+                    fontSize = 11.sp,
+                    fontFamily = FontFamily.Monospace,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Text(if (selected) "selected" else "choose", fontSize = 11.sp)
         }
     }
 }

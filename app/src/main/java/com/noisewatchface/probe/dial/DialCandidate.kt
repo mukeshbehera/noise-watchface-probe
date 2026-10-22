@@ -28,3 +28,35 @@ data class DialCandidate(
             }
     }
 }
+
+/** A template container available for building a face from an image. */
+data class DialTemplate(
+    val displayName: String,
+    val packageBytes: ByteArray,
+    val width: Int,
+    val height: Int,
+) {
+    /** Parsed on demand; templates are read once and used a few times. */
+    val parsed: TopStepPackage
+        get() = TopStepParser.parse(packageBytes)
+
+    companion object {
+        /** [bytes] must be a complete TOPSTEP container. */
+        fun from(displayName: String, bytes: ByteArray): DialTemplate? {
+            val pkg = runCatching { TopStepParser.parse(bytes) }.getOrNull() ?: return null
+            val bg = runCatching { DialBuilder.backgroundEntry(pkg.payload) }.getOrNull()
+                ?: return null
+            return DialTemplate(displayName, bytes, bg.width, bg.height)
+        }
+    }
+}
+
+/**
+ * What the user is building: a template plus their chosen image, once processed.
+ */
+data class FaceDraft(
+    val template: DialTemplate,
+    val imageName: String?,
+    val ready: Boolean,
+    val note: String,
+)
