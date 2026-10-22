@@ -333,8 +333,9 @@ class ProbeManager(private val context: Context) {
         // Note the return types differ by API level: the 33+ overload returns an
         // Int status code, the legacy one returns Boolean.
         val started: Boolean = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            // Returns an Int status code; null from getOrNull() means the call threw.
             runCatching { g.writeDescriptor(cccd, value) }
-                .getOrDefault(BluetoothStatusCodes.ERROR) == BluetoothStatusCodes.SUCCESS
+                .getOrNull() == BluetoothStatusCodes.SUCCESS
         } else {
             @Suppress("DEPRECATION")
             runCatching {
