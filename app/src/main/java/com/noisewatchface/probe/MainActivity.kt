@@ -63,6 +63,7 @@ class MainActivity : ComponentActivity() {
                 val identity = probe.identity.collectAsState().value
                 val lines = probe.lines.collectAsState().value
                 val connectFailed = probe.connectFailed.collectAsState().value
+                val busyDevice = probe.busyDevice.collectAsState().value
 
                 ProbeScreen(
                     devices = devices,
@@ -70,6 +71,7 @@ class MainActivity : ComponentActivity() {
                     inUse = inUse,
                     connectedTo = connectedTo,
                     connectFailed = connectFailed,
+                    busyDevice = busyDevice,
                     scanning = scanning,
                     mtu = mtu,
                     identity = identity,
@@ -78,6 +80,7 @@ class MainActivity : ComponentActivity() {
                     onStop = { probe.stopScan() },
                     onConnect = { probe.connect(it.device) },
                     onConnectPaired = { probe.connect(it) },
+                    onTakeOver = { probe.takeOver(it) },
                     onDisconnect = { probe.disconnect() },
                     onClear = { probe.clearLog() },
                     onExport = { shareLog() },

@@ -49,6 +49,7 @@ fun ProbeScreen(
     inUse: Set<String>,
     connectedTo: String?,
     connectFailed: String?,
+    busyDevice: BluetoothDevice?,
     scanning: Boolean,
     mtu: Int?,
     identity: Map<String, String>,
@@ -57,6 +58,7 @@ fun ProbeScreen(
     onStop: () -> Unit,
     onConnect: (ScanResult) -> Unit,
     onConnectPaired: (BluetoothDevice) -> Unit,
+    onTakeOver: (BluetoothDevice) -> Unit,
     onDisconnect: () -> Unit,
     onClear: () -> Unit,
     onExport: () -> Unit,
@@ -114,12 +116,26 @@ fun ProbeScreen(
                     colors = CardDefaults.cardColors(containerColor = Color(0xFF3A1F1F)),
                     shape = RoundedCornerShape(8.dp),
                 ) {
-                    Text(
-                        "Connect failed: $connectFailed",
-                        modifier = Modifier.padding(8.dp),
-                        fontSize = 11.sp,
-                        color = Color(0xFFFFB4B4),
-                    )
+                    Column(Modifier.padding(8.dp)) {
+                        Text(
+                            connectFailed,
+                            fontSize = 11.sp,
+                            color = Color(0xFFFFB4B4),
+                        )
+                        if (busyDevice != null) {
+                            Spacer(Modifier.height(6.dp))
+                            Button(onClick = { onTakeOver(busyDevice) }) {
+                                Text("Try to take over now", fontSize = 12.sp)
+                            }
+                            Text(
+                                "Close NoiseFit first. Android may not let us disconnect " +
+                                    "another app's link, so this can still fail.",
+                                fontSize = 10.sp,
+                                color = Color(0xFFB8B8C8),
+                                modifier = Modifier.padding(top = 4.dp),
+                            )
+                        }
+                    }
                 }
             }
 

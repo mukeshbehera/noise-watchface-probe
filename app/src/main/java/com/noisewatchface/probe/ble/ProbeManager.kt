@@ -54,8 +54,17 @@ class ProbeManager(private val context: Context) {
     private val _connectFailed = MutableStateFlow<String?>(null)
     val connectFailed: StateFlow<String?> = _connectFailed.asStateFlow()
 
+    /** The watch we believe we are dealing with, once identified. */
+    private val _found = MutableStateFlow<String?>(null)
+    val found: StateFlow<String?> = _found.asStateFlow()
+
+    /** The device a busy message refers to, so the UI can offer a retry. */
+    private val _busyDevice = MutableStateFlow<BluetoothDevice?>(null)
+    val busyDevice: StateFlow<BluetoothDevice?> = _busyDevice.asStateFlow()
+
     fun clearConnectError() {
         _connectFailed.value = null
+        _busyDevice.value = null
     }
 
     private val adapter: BluetoothAdapter? =
@@ -184,11 +193,29 @@ class ProbeManager(private val context: Context) {
         }
     }
 
+    /**
+     * Attempts to take over a device that was previously busy.
+     *
+     * Re-reads connection state first: the user may have closed NoiseFit since
+     * the row was drawn. Returns true if a connection attempt was started.
+     */
+    fun takeOver(device: BluetoothDevice): Boolean {
+        refreshDeviceState()
+        return if (device.address in _inUse.value) {
+            explainInUse(device)
+            false
+        } else {
+            connect(device)
+            true
+        }
+    }
+
     /** Explains why a connect attempt is pointless, instead of making one. */
     fun explainInUse(device: BluetoothDevice) {
-        val msg = "${device.name ?: device.address} is already connected — most BLE peripherals " +
-            "accept only one central at a time. Close NoiseFit (or turn Bluetooth off and on) " +
-            "before the probe can use it."
+        _busyDevice.value = device
+        val msg = "${device.name ?: device.address} is connected to another app. " +
+            "BLE allows one central at a time, so close NoiseFit (or turn Bluetooth " +
+            "off and on) and then retry."
         _connectFailed.value = msg
         log(LogLine.Kind.ERROR, msg)
     }
@@ -208,7 +235,10 @@ class ProbeManager(private val context: Context) {
 
     fun connect(device: BluetoothDevice) {
         stopScan()
-        // Don't spend ten seconds failing on an address already in use.
+        _found.value = device.name ?: device.address
+        // Note: this is a guard against an obviously doomed attempt, not proof
+        // the device is idle. Android may not report connections owned by other
+        // apps, so an empty set here does not mean the watch is free.
         if (device.address in _inUse.value) {
             explainInUse(device)
             return
