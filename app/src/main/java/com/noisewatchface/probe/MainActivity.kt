@@ -40,6 +40,7 @@ import com.noisewatchface.probe.dial.DialTemplate
 import com.noisewatchface.probe.dial.FaceDraft
 import com.noisewatchface.probe.dial.ImageScaler
 import com.noisewatchface.probe.dial.TopStepPackage
+import com.noisewatchface.probe.dial.TopStepParser
 import com.noisewatchface.probe.ui.PreviewScreen
 
 /** Screens reachable from the watch-face flow. */
@@ -108,6 +109,7 @@ class MainActivity : ComponentActivity() {
                 var draft by remember { mutableStateOf<FaceDraft?>(null) }
                 var previewBitmap by remember { mutableStateOf<Bitmap?>(null) }
                 var builtPackage by remember { mutableStateOf<TopStepPackage?>(null) }
+                var templateError by remember { mutableStateOf<String?>(null) }
 
                 fun validateWatch(): Boolean {
                     val status = gate.check()
@@ -145,6 +147,30 @@ class MainActivity : ComponentActivity() {
                                 draft = result.draft
                                 previewBitmap = result.preview
                                 builtPackage = result.pkg
+                            }
+                        }
+                    }
+                }
+
+                // Loads a template container chosen by the user and keeps a copy
+                // in app storage so it survives a restart.
+                val pickTemplate = rememberLauncherForActivityResult(
+                    ActivityResultContracts.OpenDocument(),
+                ) { uri ->
+                    if (uri != null) {
+                        lifecycleScope.launch {
+                            val loaded = withContext(Dispatchers.IO) { importTemplate(uri) }
+                            if (loaded != null) {
+                                templates = (templates + loaded)
+                                    .distinctBy { it.displayName }
+                                selectedTemplate = loaded
+                                draft = null
+                                previewBitmap = null
+                                builtPackage = null
+                                templateError = null
+                            } else {
+                                templateError = templateFailure
+                                    ?: "That file is not a usable TOPSTEP container"
                             }
                         }
                     }
@@ -211,7 +237,9 @@ class MainActivity : ComponentActivity() {
                         watchName = gateStatus?.watchName,
                         templates = templates,
                         selectedTemplate = selectedTemplate,
+                        templateError = templateError,
                         draft = draft,
+                        onLoadTemplate = { pickTemplate.launch(arrayOf("*/*")) },
                         onSelectTemplate = { t ->
                             if (t.displayName != selectedTemplate?.displayName) {
                                 selectedTemplate = t
@@ -339,16 +367,78 @@ class MainActivity : ComponentActivity() {
         )
     }
 
-    /** Loads template containers from assets/templates, if any are present. */
-    private fun loadTemplates(): List<DialTemplate> = runCatching {
-        assets.list("templates").orEmpty()
-            .filter { !it.endsWith(".txt", ignoreCase = true) }
-            .mapNotNull { file ->
-                runCatching {
-                    DialTemplate.from(file, assets.open("templates/$file").readBytes())
-                }.getOrNull()
+    /**
+     * Loads templates from two places: bundled assets (none ship, by design) and
+     * containers the user has imported, kept in app storage.
+     */
+    private fun loadTemplates(): List<DialTemplate> {
+        val bundled = runCatching {
+            assets.list("templates").orEmpty()
+                .filter { !it.endsWith(".txt", ignoreCase = true) }
+                .mapNotNull { file ->
+                    runCatching {
+                        DialTemplate.from(file, assets.open("templates/$file").readBytes())
+                    }.getOrNull()
+                }
+        }.getOrDefault(emptyList())
+
+        val imported = runCatching {
+            templatesDir().listFiles().orEmpty()
+                .filter { it.isFile }
+                .mapNotNull { DialTemplate.from(it.name, it.readBytes()) }
+        }.getOrDefault(emptyList())
+
+        return (bundled + imported).distinctBy { it.displayName }
+    }
+
+    private fun templatesDir() = java.io.File(filesDir, "templates").apply { mkdirs() }
+
+    /** Set when an import fails, so the UI can explain why. */
+    private var templateFailure: String? = null
+
+    /**
+     * Copies a chosen container into app storage and registers it as a template.
+     * Returns null if the file is not a usable container.
+     */
+    private fun importTemplate(uri: Uri): DialTemplate? {
+        templateFailure = null
+        return try {
+            val name = resolveDisplayName(contentResolver, uri) ?: "template.bin"
+            val bytes = contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                ?: run {
+                    templateFailure = "Could not open that file"
+                    return null
+                }
+            val template = DialTemplate.from(name, bytes)
+            if (template == null) {
+                templateFailure = explainTemplateRejection(bytes)
+                return null
             }
-    }.getOrDefault(emptyList())
+            java.io.File(templatesDir(), name).writeBytes(bytes)
+            template
+        } catch (e: Exception) {
+            templateFailure = e.message ?: "Could not import that file"
+            null
+        }
+    }
+
+    /** Says specifically why a file cannot be used as a template. */
+    private fun explainTemplateRejection(bytes: ByteArray): String {
+        if (bytes.size < TopStepPackage.HEADER_SIZE) {
+            return "Too small (${bytes.size} bytes) — a container header alone is " +
+                "${TopStepPackage.HEADER_SIZE} bytes"
+        }
+        val head = String(bytes, 0, 8, Charsets.US_ASCII)
+        if (!head.startsWith(TopStepPackage.MAGIC)) {
+            return "Not a TOPSTEP container — file starts with \"$head\", expected " +
+                "\"${TopStepPackage.MAGIC}\""
+        }
+        val parsed = runCatching { TopStepParser.parse(bytes) }.getOrNull()
+            ?: return "Header present but the container failed to parse"
+        val bg = runCatching { DialBuilder.backgroundEntry(parsed.payload) }.getOrNull()
+            ?: return "Container has no BMP background image to replace"
+        return "Unusable template (background ${bg.width}×${bg.height})"
+    }
 
     /** Reads the chosen file and tries to parse it. Never writes anywhere. */
     private fun readCandidate(uri: Uri): DialCandidate {

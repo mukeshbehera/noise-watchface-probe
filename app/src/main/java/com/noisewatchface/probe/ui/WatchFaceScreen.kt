@@ -34,7 +34,9 @@ fun WatchFaceScreen(
     watchName: String?,
     templates: List<DialTemplate>,
     selectedTemplate: DialTemplate?,
+    templateError: String?,
     draft: FaceDraft?,
+    onLoadTemplate: () -> Unit,
     onSelectTemplate: (DialTemplate) -> Unit,
     onPickImage: () -> Unit,
     onPreview: () -> Unit,
@@ -62,10 +64,11 @@ fun WatchFaceScreen(
 
             if (templates.isEmpty()) {
                 Notice(
-                    "No templates available. This build ships none yet — see the note at the " +
-                        "bottom of this screen.",
-                    Color(0xFF3A1F1F),
-                    Color(0xFFFFB4B4),
+                    "No templates loaded yet. A template is a dial container the app can " +
+                        "reuse; load one to continue. Files starting with \"TOPSTEP\" work, " +
+                        "such as a dial .bin extracted from the official app.",
+                    Color(0xFF2A2418),
+                    Color(0xFFF2C94C),
                 )
             } else {
                 templates.forEach { t ->
@@ -74,6 +77,14 @@ fun WatchFaceScreen(
                         selected = t.displayName == selectedTemplate?.displayName,
                     ) { onSelectTemplate(t) }
                 }
+            }
+
+            Spacer(Modifier.height(6.dp))
+            OutlinedButton(onClick = onLoadTemplate) { Text("Load template file") }
+
+            if (templateError != null) {
+                Spacer(Modifier.height(6.dp))
+                Notice(templateError, Color(0xFF3A1F1F), Color(0xFFFFB4B4))
             }
 
             Spacer(Modifier.height(12.dp))
@@ -87,6 +98,15 @@ fun WatchFaceScreen(
             Spacer(Modifier.height(6.dp))
             Button(onClick = onPickImage, enabled = selectedTemplate != null) {
                 Text("Pick image")
+            }
+            if (selectedTemplate == null) {
+                Text(
+                    "Load or select a template first — the image replaces that template's " +
+                        "background.",
+                    fontSize = 10.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 4.dp),
+                )
             }
 
             if (draft != null) {
