@@ -62,6 +62,7 @@ fun ProbeScreen(
     onDisconnect: () -> Unit,
     onClear: () -> Unit,
     onExport: () -> Unit,
+    onWatchFaces: () -> Unit,
 ) {
     val listState = rememberLazyListState()
 
@@ -148,6 +149,12 @@ fun ProbeScreen(
                 OutlinedButton(onClick = onDisconnect, enabled = connectedTo != null) {
                     Text("Disconnect")
                 }
+            }
+            Spacer(Modifier.height(8.dp))
+            // Entry point to the watch-face flow. It validates the existing
+            // connection; it does not create one.
+            Button(onClick = onWatchFaces, modifier = Modifier.fillMaxWidth()) {
+                Text("Watch faces →")
             }
 
             // Paired devices come first: Android knows their real names, and a
