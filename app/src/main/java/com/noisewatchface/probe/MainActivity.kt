@@ -80,7 +80,10 @@ class MainActivity : ComponentActivity() {
                     onStop = { probe.stopScan() },
                     onConnect = { probe.connect(it.device) },
                     onConnectPaired = { probe.connect(it) },
-                    onTakeOver = { probe.takeOver(it) },
+                    onRecheck = {
+                        probe.clearConnectError()
+                        probe.refreshDeviceState()
+                    },
                     onDisconnect = { probe.disconnect() },
                     onClear = { probe.clearLog() },
                     onExport = { shareLog() },

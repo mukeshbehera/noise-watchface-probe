@@ -58,7 +58,7 @@ fun ProbeScreen(
     onStop: () -> Unit,
     onConnect: (ScanResult) -> Unit,
     onConnectPaired: (BluetoothDevice) -> Unit,
-    onTakeOver: (BluetoothDevice) -> Unit,
+    onRecheck: () -> Unit,
     onDisconnect: () -> Unit,
     onClear: () -> Unit,
     onExport: () -> Unit,
@@ -124,12 +124,14 @@ fun ProbeScreen(
                         )
                         if (busyDevice != null) {
                             Spacer(Modifier.height(6.dp))
-                            Button(onClick = { onTakeOver(busyDevice) }) {
-                                Text("Try to take over now", fontSize = 12.sp)
+                            // Deliberately a status re-check, not a connect. While the
+                            // watch is held by another app, an attempt cannot succeed.
+                            OutlinedButton(onClick = onRecheck) {
+                                Text("Re-check status", fontSize = 12.sp)
                             }
                             Text(
-                                "Close NoiseFit first. Android may not let us disconnect " +
-                                    "another app's link, so this can still fail.",
+                                "No connection is attempted while the watch is in use. " +
+                                    "Close NoiseFit, then re-check.",
                                 fontSize = 10.sp,
                                 color = Color(0xFFB8B8C8),
                                 modifier = Modifier.padding(top = 4.dp),
@@ -246,9 +248,11 @@ private fun PairedRow(
     val name = device.name ?: "(no name)"
     val verdict = assessName(name)
     Row(
+        // While another app holds the device, the row is inert: there is no
+        // connection attempt to offer, so a tappable row would mislead.
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick)
+            .then(if (busy) Modifier else Modifier.clickable(onClick = onClick))
             .padding(horizontal = 12.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -277,17 +281,29 @@ private fun PairedRow(
             verdict.reason?.let { Text(it, fontSize = 10.sp, color = Color(0xFF57D9A3)) }
             if (busy) {
                 Text(
-                    "in use by another app — close NoiseFit first",
+                    "connected by another app (NoiseFit) — no attempt made",
                     fontSize = 10.sp,
                     color = Color(0xFFF2C94C),
                 )
             }
         }
-        Text(
-            if (busy) "busy" else "connect ›",
-            fontSize = 11.sp,
-            color = if (busy) Color(0xFFF2C94C) else MaterialTheme.colorScheme.primary,
-        )
+        if (busy) {
+            Text(
+                "IN USE",
+                fontSize = 9.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color(0xFF0B2A1F),
+                modifier = Modifier
+                    .background(Color(0xFFF2C94C), RoundedCornerShape(4.dp))
+                    .padding(horizontal = 5.dp, vertical = 2.dp),
+            )
+        } else {
+            Text(
+                "connect ›",
+                fontSize = 11.sp,
+                color = MaterialTheme.colorScheme.primary,
+            )
+        }
     }
 }
 

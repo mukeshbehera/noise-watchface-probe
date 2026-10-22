@@ -193,23 +193,6 @@ class ProbeManager(private val context: Context) {
         }
     }
 
-    /**
-     * Attempts to take over a device that was previously busy.
-     *
-     * Re-reads connection state first: the user may have closed NoiseFit since
-     * the row was drawn. Returns true if a connection attempt was started.
-     */
-    fun takeOver(device: BluetoothDevice): Boolean {
-        refreshDeviceState()
-        return if (device.address in _inUse.value) {
-            explainInUse(device)
-            false
-        } else {
-            connect(device)
-            true
-        }
-    }
-
     /** Explains why a connect attempt is pointless, instead of making one. */
     fun explainInUse(device: BluetoothDevice) {
         _busyDevice.value = device
