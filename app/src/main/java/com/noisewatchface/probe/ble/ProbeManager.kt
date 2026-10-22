@@ -9,6 +9,7 @@ import android.bluetooth.BluetoothGattCharacteristic
 import android.bluetooth.BluetoothGattDescriptor
 import android.bluetooth.BluetoothManager
 import android.bluetooth.BluetoothProfile
+import android.bluetooth.BluetoothStatusCodes
 import android.bluetooth.le.ScanCallback
 import android.bluetooth.le.ScanResult
 import android.bluetooth.le.ScanSettings
@@ -329,8 +330,11 @@ class ProbeManager(private val context: Context) {
         } else {
             BluetoothGattDescriptor.ENABLE_INDICATION_VALUE
         }
-        val started = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            runCatching { g.writeDescriptor(cccd, value) }.getOrDefault(false)
+        // Note the return types differ by API level: the 33+ overload returns an
+        // Int status code, the legacy one returns Boolean.
+        val started: Boolean = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            runCatching { g.writeDescriptor(cccd, value) }
+                .getOrDefault(BluetoothStatusCodes.ERROR) == BluetoothStatusCodes.SUCCESS
         } else {
             @Suppress("DEPRECATION")
             runCatching {
