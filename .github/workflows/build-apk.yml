@@ -47,6 +47,19 @@ jobs:
           key: gradle-${{ runner.os }}-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
           restore-keys: gradle-${{ runner.os }}-
 
+      # Unit tests must run: the container parser is only trustworthy if the
+      # byte-exact round-trip actually executes, not merely compiles.
+      - name: Run unit tests
+        run: ./gradlew --no-daemon testDebugUnitTest
+
+      - name: Publish test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unit-test-report
+          path: app/build/reports/tests/testDebugUnitTest/**
+          if-no-files-found: warn
+
       - name: Build debug APK
         run: ./gradlew --no-daemon assembleDebug
 
