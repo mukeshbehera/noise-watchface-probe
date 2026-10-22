@@ -9,8 +9,11 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.remember
+import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.lifecycleScope
 import com.noisewatchface.probe.ble.ProbeManager
 import com.noisewatchface.probe.ui.ProbeScreen
@@ -36,12 +39,22 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         probe = ProbeManager(applicationContext)
+        probe.refreshDeviceState()
 
         setContent {
             MaterialTheme {
-                // BLE frames arrive several times a second; reading the bonded
-                // list on every recomposition would be wasteful. Cache it.
-                val paired = remember { probe.pairedDevices() }
+                // Device state can change while we are looking at it: pairing
+                // happens in Settings or NoiseFit, and connections come and go.
+                val lifecycleOwner = LocalLifecycleOwner.current
+                DisposableEffect(lifecycleOwner) {
+                    val observer = LifecycleEventObserver { _, event ->
+                        if (event == Lifecycle.Event.ON_RESUME) probe.refreshDeviceState()
+                    }
+                    lifecycleOwner.lifecycle.addObserver(observer)
+                    onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+                }
+                val paired = probe.paired.collectAsState().value
+                val inUse = probe.inUse.collectAsState().value
 
                 val devices = probe.devices.collectAsState().value
                 val connectedTo = probe.connectedTo.collectAsState().value
@@ -54,6 +67,7 @@ class MainActivity : ComponentActivity() {
                 ProbeScreen(
                     devices = devices,
                     paired = paired,
+                    inUse = inUse,
                     connectedTo = connectedTo,
                     connectFailed = connectFailed,
                     scanning = scanning,

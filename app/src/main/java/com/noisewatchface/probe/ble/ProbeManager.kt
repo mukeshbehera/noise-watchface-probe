@@ -138,16 +138,67 @@ class ProbeManager(private val context: Context) {
     }
 
     /**
+     * Devices Android currently reports as connected over GATT. Best effort:
+     * some Android versions only report connections owned by the calling app,
+     * so an empty set does not prove the watch is idle.
+     */
+    private val _inUse = MutableStateFlow<Set<String>>(emptySet())
+    val inUse: StateFlow<Set<String>> = _inUse.asStateFlow()
+
+    /** Bonded devices, refreshed on demand rather than once at startup. */
+    private val _paired = MutableStateFlow<List<Pair<BluetoothDevice, Boolean>>>(emptyList())
+    val paired: StateFlow<List<Pair<BluetoothDevice, Boolean>>> = _paired.asStateFlow()
+
+    /**
+     * Re-reads bonded devices and current GATT connection state.
+     *
+     * Bond state can change while the app is open (pairing happens in Settings
+     * or NoiseFit), and a watch held by NoiseFit should be shown as in use
+     * rather than being offered a connection attempt that cannot succeed.
+     */
+    fun refreshDeviceState() {
+        val a = adapter ?: return
+        _paired.value = runCatching {
+            a.bondedDevices.orEmpty().map { it to true }
+        }.getOrDefault(emptyList())
+
+        val manager = context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
+        val connected = runCatching {
+            manager?.getConnectedDevices(BluetoothProfile.GATT)
+                .orEmpty()
+                .filter {
+                    manager?.getConnectionState(it, BluetoothProfile.GATT) ==
+                        BluetoothProfile.STATE_CONNECTED
+                }
+                .map { it.address }
+                .toSet()
+        }.getOrDefault(emptySet())
+
+        if (connected != _inUse.value) {
+            _inUse.value = connected
+            if (connected.isEmpty()) {
+                log(LogLine.Kind.INFO, "No GATT connections reported as active.")
+            } else {
+                log(LogLine.Kind.INFO, "Active GATT connections: ${connected.joinToString()}")
+            }
+        }
+    }
+
+    /** Explains why a connect attempt is pointless, instead of making one. */
+    fun explainInUse(device: BluetoothDevice) {
+        val msg = "${device.name ?: device.address} is already connected — most BLE peripherals " +
+            "accept only one central at a time. Close NoiseFit (or turn Bluetooth off and on) " +
+            "before the probe can use it."
+        _connectFailed.value = msg
+        log(LogLine.Kind.ERROR, msg)
+    }
+
+    /**
      * Devices Android already knows about — bonded/pairing records plus any it
      * has cached. A connected BLE peripheral usually stops advertising, so this
      * is the only way to see a watch that NoiseFit currently holds.
      */
-    fun pairedDevices(): List<Pair<BluetoothDevice, Boolean>> {
-        val a = adapter ?: return emptyList()
-        return runCatching {
-            a.bondedDevices.orEmpty().map { it to true }
-        }.getOrDefault(emptyList())
-    }
+    fun pairedDevices(): List<Pair<BluetoothDevice, Boolean>> = _paired.value
 
     /** Last-known remote device for an address, usable without an active scan. */
     fun deviceForAddress(address: String): BluetoothDevice? {
@@ -157,6 +208,11 @@ class ProbeManager(private val context: Context) {
 
     fun connect(device: BluetoothDevice) {
         stopScan()
+        // Don't spend ten seconds failing on an address already in use.
+        if (device.address in _inUse.value) {
+            explainInUse(device)
+            return
+        }
         log(LogLine.Kind.INFO, "Connecting to ${device.name ?: device.address} (${device.address})…")
         _connectedTo.value = null
         _connectFailed.value = null

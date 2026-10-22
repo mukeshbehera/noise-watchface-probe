@@ -46,6 +46,7 @@ import com.noisewatchface.probe.ble.assessName
 fun ProbeScreen(
     devices: List<ScanResult>,
     paired: List<Pair<BluetoothDevice, Boolean>>,
+    inUse: Set<String>,
     connectedTo: String?,
     connectFailed: String?,
     scanning: Boolean,
@@ -147,7 +148,11 @@ fun ProbeScreen(
                                 SectionHeader("Paired with this phone (best match)")
                             }
                             items(paired) { (device, bonded) ->
-                                PairedRow(device, bonded) { onConnectPaired(device) }
+                                PairedRow(
+                                    device = device,
+                                    bonded = bonded,
+                                    busy = device.address in inUse,
+                                ) { onConnectPaired(device) }
                                 Divider()
                             }
                         }
@@ -216,7 +221,12 @@ private fun SectionHeader(text: String) {
 }
 
 @Composable
-private fun PairedRow(device: BluetoothDevice, bonded: Boolean, onClick: () -> Unit) {
+private fun PairedRow(
+    device: BluetoothDevice,
+    bonded: Boolean,
+    busy: Boolean,
+    onClick: () -> Unit,
+) {
     val name = device.name ?: "(no name)"
     val verdict = assessName(name)
     Row(
@@ -249,8 +259,19 @@ private fun PairedRow(device: BluetoothDevice, bonded: Boolean, onClick: () -> U
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             verdict.reason?.let { Text(it, fontSize = 10.sp, color = Color(0xFF57D9A3)) }
+            if (busy) {
+                Text(
+                    "in use by another app — close NoiseFit first",
+                    fontSize = 10.sp,
+                    color = Color(0xFFF2C94C),
+                )
+            }
         }
-        Text("connect ›", fontSize = 11.sp, color = MaterialTheme.colorScheme.primary)
+        Text(
+            if (busy) "busy" else "connect ›",
+            fontSize = 11.sp,
+            color = if (busy) Color(0xFFF2C94C) else MaterialTheme.colorScheme.primary,
+        )
     }
 }
 
