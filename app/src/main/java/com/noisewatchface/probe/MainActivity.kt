@@ -326,7 +326,7 @@ class MainActivity : ComponentActivity() {
             Bitmap.Config.ARGB_8888,
         )
 
-        BuiltFace(
+        return BuiltFace(
             draft = FaceDraft(
                 template = template,
                 imageName = name,
