@@ -1,7 +1,6 @@
 package com.noisewatchface.probe.ui
 
 import android.bluetooth.le.ScanResult
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -107,8 +106,10 @@ fun ProbeScreen(
             }
 
             Spacer(Modifier.height(8.dp))
+            // weight(1f) so the transcript takes exactly the space left over and
+            // never overflows the column.
             Card(
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier.fillMaxWidth().weight(1f),
                 colors = CardDefaults.cardColors(containerColor = Color(0xFF11131A)),
                 shape = RoundedCornerShape(10.dp),
             ) {

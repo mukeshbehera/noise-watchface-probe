@@ -65,8 +65,16 @@ class ProbeManager(private val context: Context) {
     fun isBluetoothReady(): Boolean = adapter?.isEnabled == true
 
     fun startScan() {
-        val a = adapter ?: return log(LogLine.Kind.ERROR, "No Bluetooth adapter")
-        val scanner = a.bluetoothLeScanner ?: return log(LogLine.Kind.ERROR, "No BLE scanner")
+        val a = adapter
+        if (a == null) {
+            log(LogLine.Kind.ERROR, "No Bluetooth adapter")
+            return
+        }
+        val scanner = a.bluetoothLeScanner
+        if (scanner == null) {
+            log(LogLine.Kind.ERROR, "No BLE scanner (is Bluetooth off?)")
+            return
+        }
         if (_scanning.value) return
 
         _devices.value = emptyList()
@@ -98,7 +106,11 @@ class ProbeManager(private val context: Context) {
     }
 
     fun stopScan() {
-        val a = adapter ?: return
+        val a = adapter
+        if (a == null) {
+            _scanning.value = false
+            return
+        }
         runCatching { a.bluetoothLeScanner?.stopScan(callback) }
         if (_scanning.value) log(LogLine.Kind.INFO, "Scan stopped")
         _scanning.value = false
