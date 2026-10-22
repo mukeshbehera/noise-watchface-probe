@@ -94,10 +94,22 @@ object DialBuilder {
         val header = payload.copyOfRange(blobOffset, blobOffset + fileSize)
         val dataOffset = ByteBuffer.wrap(header, 10, 4)
             .order(ByteOrder.LITTLE_ENDIAN).int
-        val pixelBytes = fileSize - dataOffset
+        // biSizeImage is authoritative. Deriving pixel bytes by subtracting the
+        // data offset from the file size is wrong: BMP rows are padded to a
+        // 4-byte boundary, which leaves trailing bytes (329800 - 70 = 329730,
+        // but the real pixel data is 368*448*2 = 329728).
+        val declaredImageSize = ByteBuffer.wrap(header, 34, 4)
+            .order(ByteOrder.LITTLE_ENDIAN).int
+        val pixelBytes = if (declaredImageSize > 0) declaredImageSize else expected
         if (pixelBytes != expected) {
             throw DialFormatException(
-                "Template BMP holds $pixelBytes pixel bytes, expected $expected",
+                "Template BMP declares $pixelBytes pixel bytes, expected $expected",
+            )
+        }
+        if (dataOffset + expected > fileSize) {
+            throw DialFormatException(
+                "BMP pixel data runs past the end of its blob " +
+                    "(offset $dataOffset + $expected > $fileSize)",
             )
         }
 
